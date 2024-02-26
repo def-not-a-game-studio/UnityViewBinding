@@ -33,7 +33,7 @@ namespace Editor
             if (!prefabStage.assetPath.ToLowerInvariant().EndsWith(ViewBindingAssetSuffix)) return;
 
             try
-            {
+            { 
                 ProcessAsset(prefabStage.assetPath);
             }
             catch (Exception e)
@@ -131,40 +131,33 @@ public partial class {parsedName}
 
         private static void ApplyNewPropertiesValues(string path, string customMonoGuid, SortedDictionary<string, string> propMappings)
         {
-            const string customMarkerStart = "--- !vb SectionStart";
-            const string customMarkerEnd = "--- !vb SectionEnd";
             const string desiredLastLine = "  m_EditorClassIdentifier: ";
             var scriptLine = $"  m_Script: {{fileID: 11500000, guid: {customMonoGuid}, type: 3}}";
 
             var assetFile = File.ReadAllLines(path).ToList();
             var scriptLineIndex = assetFile.IndexOf(scriptLine);
-            var sectionStartIndex = assetFile.IndexOf(customMarkerStart, scriptLineIndex);
-            var sectionEndIndex = assetFile.IndexOf(customMarkerEnd, scriptLineIndex);
             var lastLineIndex = assetFile.IndexOf(desiredLastLine, scriptLineIndex);
 
-            if (sectionStartIndex > 0 && sectionEndIndex > 0)
+            var tempArray = assetFile.Skip(lastLineIndex).ToArray();
+            foreach (var line in tempArray)
             {
-                var count = sectionEndIndex - sectionStartIndex;
-                assetFile.RemoveRange(++sectionStartIndex, count - 1);
-
                 foreach (var (key, value) in propMappings)
                 {
-                    var line = $"  {key}: {{fileID: {value}}}";
-                    assetFile.Insert(sectionStartIndex, line);
+                    var compare = $"  {key}: {{fileID: ";
+                    if (!line.StartsWith(compare)) continue;
+                    
+                    assetFile.Remove(line);
+                    break;
                 }
             }
-            else
+            
+            foreach (var (key, value) in propMappings)
             {
-                assetFile.Insert(++lastLineIndex, customMarkerStart);
-                foreach (var (key, value) in propMappings)
-                {
-                    var line = $"  {key}: {{fileID: {value}}}";
-                    assetFile.Insert(++lastLineIndex, line);
-                }
-
-                assetFile.Insert(++lastLineIndex, customMarkerEnd);
+                var line = $"  {key}: {{fileID: {value}}}";
+                assetFile.Insert(++lastLineIndex, line);
             }
 
+            Debug.Log(EditorUtility.IsValidUnityYAML(string.Join("\n", assetFile)));
             File.WriteAllLines(path, assetFile);
         }
 
