@@ -1,5 +1,3 @@
-using JetBrains.Annotations;
-
 namespace Editor
 {
     using System.Text;
@@ -71,9 +69,9 @@ namespace Editor
         }
 
         private static void WriteCSharpFile(
-            HashSet<string> imports,
+            IEnumerable<string> imports,
             string parsedName,
-            HashSet<string> properties,
+            IEnumerable<string> properties,
             List<PartMapping> propMappings)
         {
             var stringBuilder = new StringBuilder();
@@ -87,7 +85,7 @@ public partial class {parsedName}
 {{
 
 {string.Join(";\n", properties)};
-
+#if UNITY_EDITOR
     private void OnValidate()
     {{
         var comps = GetComponentsInChildren<MonoBehaviour>();
@@ -108,6 +106,7 @@ public partial class {parsedName}
         }}
         EditorUtility.SetDirty(this);
     }}
+#endif
 
 }}");
             var scriptPath = $"Assets/Scripts/UnityViewBinding/{parsedName}.cs";
