@@ -31,12 +31,25 @@ namespace Editor
 
         private static void OnPrefabUpdated(PrefabStage prefabStage)
         {
-            if (!EditorUtility.IsDirty(prefabStage.prefabContentsRoot)) return;
-            if (!prefabStage.assetPath.ToLowerInvariant().EndsWith(ViewBindingAssetSuffix)) return;
+            if (!EditorUtility.IsDirty(prefabStage.prefabContentsRoot))
+            {
+                Debug.Log("Asset not dirty, skipping");
+                return;
+            }
+            if (!prefabStage.assetPath.ToLowerInvariant().EndsWith(ViewBindingAssetSuffix))
+            {
+                Debug.LogError("Asset name does not match format, skipping");
+                return;
+            }
 
             try
             {
-                ProcessAsset(prefabStage.assetPath);
+                if (CreateMono(prefabStage))
+                    return;
+                
+                EditorPrefs.SetString("AssetPath", prefabStage.assetPath);
+                EditorPrefs.SetBool("ShouldGenerateViewBinding", true);
+                CreateViewBinding();
             }
             catch (Exception e)
             {
@@ -48,15 +61,78 @@ namespace Editor
             }
         }
 
-        private static void ProcessAsset(string path)
+        /// <summary>
+        /// Tries to create the partial MonoBehaviour so we can generate the ViewBinding
+        /// </summary>
+        /// <param name="prefabStage"></param>
+        /// <returns>False if partial MonoBehaviour already exists, True if we needed to create</returns>
+        private static bool CreateMono(PrefabStage prefabStage)
         {
-            ReadAssetYaml(path);
+            var assetName = prefabStage.prefabContentsRoot.name;
+            var parsedName = $"{Normalize(assetName)}Binding";
+            var stringBuilder = new StringBuilder();
+            stringBuilder.Append($@"using UnityEngine;
+public partial class {parsedName} : MonoBehaviour {{}}
+");
+
+            var scriptPath = $"Assets/Scripts/UnityViewBinding/{Normalize(assetName)}.Mono.cs";
+            var fileExists = File.Exists(scriptPath);
+            if (fileExists) return false;
+
+            if (!AssetDatabase.IsValidFolder("Assets/Scripts/UnityViewBinding"))
+            {
+                AssetDatabase.CreateFolder("Assets/Scripts", "UnityViewBinding");
+            }
+
+            File.WriteAllText(scriptPath, stringBuilder.ToString());
+            AssetDatabase.Refresh();
+
+            EditorPrefs.SetString("AssetPath", prefabStage.assetPath);
+            EditorPrefs.SetBool("ShouldGenerateViewBinding", true);
+
+            return true;
         }
 
-        private static string Normalize(string inStr)
+        [UnityEditor.Callbacks.DidReloadScripts(-1)]
+        private static void OnScriptsReloaded()
         {
-            return Regex.Replace(inStr, @"[^\w]", "", RegexOptions.None, TimeSpan.FromSeconds(.5));
+            CreateViewBinding();
         }
+        private static void CreateViewBinding()
+        {
+            try
+            {
+                var shouldGenerateViewBinding = EditorPrefs.GetBool("ShouldGenerateViewBinding");
+                var assetPath = EditorPrefs.GetString("AssetPath");
+
+                if (!shouldGenerateViewBinding || assetPath == string.Empty)
+                    return;
+
+                var asset = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+                var parsedName = $"{Normalize(asset.name)}Binding";
+                var componentType = Type.GetType($"{parsedName}, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null");
+                if (asset.GetComponent(componentType) == null)
+                {
+                    asset.AddComponent(componentType);
+                }
+                EditorUtility.SetDirty(asset);
+
+                ProcessAsset(assetPath);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e);
+            }
+            finally
+            {
+                EditorPrefs.SetString("AssetPath", string.Empty);
+                EditorPrefs.SetBool("ShouldGenerateViewBinding", false);
+            }
+        }
+
+        private static void ProcessAsset(string path) => ReadAssetYaml(path);
+
+        private static string Normalize(string inStr) => Regex.Replace(inStr, @"[^\w]", "", RegexOptions.None, TimeSpan.FromSeconds(.5));
 
         private static void ReadAssetYaml(string path)
         {
@@ -65,12 +141,13 @@ namespace Editor
             var groups = ParseYamlIntoGroups(path);
 
             FindProperties(groups, assetName, parsedName, out var properties, out var imports, out var propMappings);
-            WriteCSharpFile(imports, parsedName, properties, propMappings);
+            WriteCSharpFile(imports, parsedName, assetName, properties, propMappings);
         }
 
         private static void WriteCSharpFile(
             IEnumerable<string> imports,
             string parsedName,
+            string assetName,
             IEnumerable<string> properties,
             List<PartMapping> propMappings)
         {
@@ -79,6 +156,8 @@ namespace Editor
 
 using UnityEngine;
 {string.Join(";\n", imports)};
+
+using TMP = TMPro.TextMeshProUGUI;
 
 public partial class {parsedName} 
 {{
@@ -94,9 +173,9 @@ public partial class {parsedName}
             foreach (var map in propMappings)
             {
                 stringBuilder.Append($@"
-            if (component.gameObject.name == ""{map.objectName}"" && component is {map.className} {map.propertyName.ToLowerInvariant()})
+            if (component.gameObject.name == ""{map.ObjectName}"" && component is {map.ClassName} {map.PropertyName.ToLowerInvariant()})
             {{
-                {map.propertyName} = {map.propertyName.ToLowerInvariant()};
+                {map.PropertyName} = {map.PropertyName.ToLowerInvariant()};
             }}
 ");
             }
@@ -108,7 +187,7 @@ public partial class {parsedName}
 #endif
 
 }}");
-            var scriptPath = $"Assets/Scripts/UnityViewBinding/{parsedName}.cs";
+            var scriptPath = $"Assets/Scripts/UnityViewBinding/{Normalize(assetName)}.Binding.cs";
             if (!AssetDatabase.IsValidFolder("Assets/Scripts/UnityViewBinding"))
             {
                 AssetDatabase.CreateFolder("Assets/Scripts", "UnityViewBinding");
@@ -170,7 +249,7 @@ public partial class {parsedName}
             if (ids.Contains(prefabInstanceName))
             {
                 throw new InvalidDataException(
-                    $"Element id {prefabInstanceName} is already defined. GameObjects names are treated as Ids");
+                $"Element id {prefabInstanceName} is already defined. GameObjects names are treated as Ids");
             }
 
             ids.Add(prefabInstanceName);
@@ -178,9 +257,9 @@ public partial class {parsedName}
             properties.Add(property);
             propMappings.Add(new PartMapping
             {
-                className = className,
-                objectName = prefabInstanceName,
-                propertyName = Normalize(prefabInstanceName)
+                ClassName = className,
+                ObjectName = prefabInstanceName,
+                PropertyName = Normalize(prefabInstanceName)
             });
         }
 
@@ -211,8 +290,11 @@ public partial class {parsedName}
                 var scriptPath = AssetDatabase.GUIDToAssetPath(monoScriptReference.AssetGuid);
                 var behaviourName = Path.GetFileNameWithoutExtension(scriptPath);
 
-                if (behaviourName == parsedClassName)
+                if (behaviourName.StartsWith(Normalize(originalName)))
                     continue;
+
+                if (behaviourName == "TextMeshProUGUI")
+                    behaviourName = "TMP";
 
                 var behaviourNamespace =
                     File.ReadAllLines(scriptPath).FirstOrDefault(it => it.StartsWith("namespace"))?["namespace".Length..]?.Trim();
@@ -223,7 +305,7 @@ public partial class {parsedName}
                 if (ids.Contains(propName))
                 {
                     throw new InvalidDataException(
-                        $"Element id {propName} is already defined. GameObjects names are treated as Ids");
+                    $"Element id {propName} is already defined. GameObjects names are treated as Ids");
                 }
 
                 ids.Add(propName);
@@ -235,9 +317,9 @@ public partial class {parsedName}
 
                 propMappings.Add(new PartMapping
                 {
-                    className = behaviourName,
-                    objectName = originalName,
-                    propertyName = propName
+                    ClassName = behaviourName,
+                    ObjectName = originalName,
+                    PropertyName = propName
                 });
             }
         }
@@ -275,7 +357,7 @@ public partial class {parsedName}
                         if (line.StartsWith(ComponentPrefix))
                         {
                             var fileID = line.Substring(ComponentPrefix.Length,
-                                line.IndexOf('}') - ComponentPrefix.Length).Trim();
+                            line.IndexOf('}') - ComponentPrefix.Length).Trim();
                             partProperties.Add(new PartComponent
                             {
                                 FileId = fileID
@@ -328,7 +410,7 @@ public partial class {parsedName}
                     {
                         FileId = component.Key.FileId.Trim(),
                         AssetGuid = script.Substring(ScriptPrefix.Length,
-                            script.IndexOf(ScriptSuffix, StringComparison.Ordinal) - ScriptPrefix.Length).Trim(),
+                        script.IndexOf(ScriptSuffix, StringComparison.Ordinal) - ScriptPrefix.Length).Trim(),
                     };
                     monoReferences.Add(monoScript);
                 }
@@ -365,7 +447,7 @@ public class MonoScriptReference
 
 public class PartMapping
 {
-    public string propertyName;
-    public string className;
-    public string objectName;
+    public string PropertyName;
+    public string ClassName;
+    public string ObjectName;
 }
