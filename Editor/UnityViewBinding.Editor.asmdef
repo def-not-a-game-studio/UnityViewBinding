@@ -1,6 +1,6 @@
 {
     "name": "UnityViewBinding.Editor",
-    "rootNamespace": "",
+    "rootNamespace": "AutomaticViewBinding",
     "references": [],
     "includePlatforms": [
         "Editor"
