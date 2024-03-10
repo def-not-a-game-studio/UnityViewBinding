@@ -24,6 +24,10 @@ namespace AutomaticViewBinding
                 settings.generatedNamespace = "ViewBinding";
                 settings.prefabSuffix = ".View";
                 settings.showWarningLogs = false;
+                if (!AssetDatabase.IsValidFolder("Assets/Scripts/UnityViewBinding"))
+                {
+                    AssetDatabase.CreateFolder("Assets/Scripts", "UnityViewBinding");
+                }
                 AssetDatabase.CreateAsset(settings, SettingsPath);
                 AssetDatabase.SaveAssets();
             }
