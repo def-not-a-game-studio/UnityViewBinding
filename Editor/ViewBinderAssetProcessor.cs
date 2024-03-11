@@ -16,9 +16,11 @@ namespace AutomaticViewBinding
     {
         private const string ShouldGenerateViewBinding = "ShouldGenerateViewBinding";
         private const string AssetPath = "AssetPath";
+        private const string IgnoreTagName = "ViewBinderIgnore";
 
         static ViewBinderAssetProcessor()
         {
+            TagManager.CreateTag(IgnoreTagName);
             PrefabStage.prefabStageClosing += OnPrefabUpdated;
         }
 
@@ -129,6 +131,8 @@ public partial class {parsedName} : MonoBehaviour {{}}
                 {
                     if (mono == null) continue;
                     if (mono.GetType().Name == parsedName) continue;
+                    // ReSharper disable once Unity.UnknownTag
+                    if (mono.gameObject.CompareTag(IgnoreTagName)) continue;
 
                     var prefabInstance = PrefabUtility.GetCorrespondingObjectFromSource(mono);
                     // part of the root asset and not inner prefab
