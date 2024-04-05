@@ -1,7 +1,7 @@
 {
   "name": "com.defnotagamestudio.unityviewbinding",
   "displayName": "Automatic ViewBinding for Unity",
-  "version": "0.0.1",
+  "version": "1.0.2",
   "unity": "2022.3",
   "description": "Automatically creates a matching .cs class out of an UI prefab structure",
   "keywords": [
@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/def-not-a-game-studio/DotRecast.git",
-    "directory": "com.defnotagamestudio.dotrecast"
+    "url": "https://github.com/def-not-a-game-studio/UnityViewBinding.git",
+    "directory": "com.defnotagamestudio.unityviewbinding"
   }
 }
