@@ -85,7 +85,7 @@ public partial class {parsedName} : MonoBehaviour {{}}
 }}
 ");
 
-            var scriptPath = $"Assets/Scripts/UnityViewBinding/{Normalize(assetName)}.Mono.cs";
+            var scriptPath = $"Assets/Scripts/UnityViewBinding/{parsedName}.cs";
             var fileExists = File.Exists(scriptPath);
             if (fileExists) return false;
 
